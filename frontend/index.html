@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gerenciador de Tarefas</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Gerenciador de Tarefas do Marcelo</h1>
+    <form id="tarefa-form">
+      <input type="text" id="titulo" placeholder="Título" required autocomplete="off" />
+      <input type="text" id="descricao" placeholder="Descrição" required autocomplete="off"/>
+      <input type="text" id="responsavel" placeholder="Responsável" required autocomplete="off"/>
+      <button type="submit">Adicionar Tarefa</button>
+    </form>
+
+    <h3>Resumo</h3>
+    <div id="resumo-status">Pendente: 0 | Em Andamento: 0 | Concluída: 0</div>
+
+    <table id="tabela-tarefas">
+      <thead>
+        <tr>
+          <th>Título</th>
+          <th>Responsável</th>
+          <th>Status</th>
+          <th>Ações</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+
+  <!-- Firebase (versão com módulos) -->
+  <script type="module">
+    import {
+  initializeApp
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  getDocs,
+  updateDoc,
+  deleteDoc,
+  doc
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCawQOPE4MXx5I-XXwFcYHNjsPB58XhQu8",
+  authDomain: "cadastroprodutos-5f2dd.firebaseapp.com",
+  projectId: "cadastroprodutos-5f2dd",
+  storageBucket: "cadastroprodutos-5f2dd.firebasestorage.app",
+  messagingSenderId: "131837635643",
+  appId: "1:131837635643:web:426b117be15fd40dda001e",
+  measurementId: "G-MRYYZYYF8N"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+
+class Tarefa {
+  #status;
+
+  constructor(id, titulo, descricao, responsavel, status = "Pendente") {
+    if (!titulo || !descricao || !responsavel) {
+      throw new Error("Todos os campos são obrigatórios.");
+    }
+    this.id = id;
+    this.titulo = titulo;
+    this.descricao = descricao;
+    this.responsavel = responsavel;
+    this.#status = status;
+  }
+
+  get status() {
+    return this.#status;
+  }
+
+  alterarStatus() {
+    const estados = ["Pendente", "Em Andamento", "Concluída"];
+    const idx = estados.indexOf(this.#status);
+    this.#status = estados[(idx + 1) % estados.length];
+  }
+}
+
+const tarefas = [];
+
+document.getElementById("tarefa-form").addEventListener("submit", async function (e) {
+  e.preventDefault();
+
+  const titulo = document.getElementById("titulo").value;
+  const descricao = document.getElementById("descricao").value;
+  const responsavel = document.getElementById("responsavel").value;
+
+  try {
+    const docRef = await addDoc(collection(db, "tarefas"), {
+      titulo,
+      descricao,
+      responsavel,
+      status: "Pendente"
+    });
+
+    tarefas.push(new Tarefa(docRef.id, titulo, descricao, responsavel));
+    atualizarTabela();
+    e.target.reset();
+  } catch (erro) {
+    alert(erro.message);
+  }
+});
+
+async function atualizarTabela() {
+  const tbody = document.querySelector("#tabela-tarefas tbody");
+  tbody.innerHTML = "";
+  tarefas.length = 0;
+
+  const querySnapshot = await getDocs(collection(db, "tarefas"));
+  querySnapshot.forEach((docSnap) => {
+    const data = docSnap.data();
+    const tarefa = new Tarefa(docSnap.id, data.titulo, data.descricao, data.responsavel, data.status);
+    tarefas.push(tarefa);
+  });
+
+  tarefas.forEach((tarefa, index) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td>${tarefa.titulo}</td>
+      <td>${tarefa.responsavel}</td>
+      <td>${tarefa.status}</td>
+      <td>
+        <button onclick="alterarStatus(${index})">Alterar Status</button>
+        <button onclick="removerTarefa(${index})">Remover</button>
+      </td>
+    `;
+    tbody.appendChild(row);
+  });
+
+  atualizarResumo();
+}
+
+window.alterarStatus = async function(index) {
+  const tarefa = tarefas[index];
+  tarefa.alterarStatus();
+
+  const ref = doc(db, "tarefas", tarefa.id);
+  await updateDoc(ref, { status: tarefa.status });
+
+  atualizarTabela();
+}
+
+window.removerTarefa = async function(index) {
+  const tarefa = tarefas[index];
+
+  const ref = doc(db, "tarefas", tarefa.id);
+  await deleteDoc(ref);
+
+  tarefas.splice(index, 1);
+  atualizarTabela();
+}
+
+function atualizarResumo() {
+  const contagem = { "Pendente": 0, "Em Andamento": 0, "Concluída": 0 };
+  tarefas.forEach(t => contagem[t.status]++);
+  document.getElementById("resumo-status").textContent =
+    `Pendente: ${contagem["Pendente"]} | Em Andamento: ${contagem["Em Andamento"]} | Concluída: ${contagem["Concluída"]}`;
+}
+
+window.addEventListener("load", atualizarTabela);
+  </script>
+</body>
+</html>
